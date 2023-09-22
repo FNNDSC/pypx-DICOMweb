@@ -1,70 +1,39 @@
-use std::path::PathBuf;
+//! Helper functions related to translating to DICOMweb response schemas.
+
 use pypx::StudyDataMeta;
-use dicom::dictionary_std::tags;
 use serde_json::{json, Value};
+use dicom::dictionary_std::tags;
 
-pub struct PypxDb {
-    base: PathBuf,
-    study_data_dir: PathBuf,
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("Not a directory: {0:?}")]
-pub struct PypxBaseNotADir(pub PathBuf);
-
-
-impl PypxDb {
-
-    pub fn new(base: PathBuf) -> Result<Self, PypxBaseNotADir> {
-        let study_data_dir = base.join("log/studyData");
-
-        if ![&base, &study_data_dir].iter().all(|p| p.is_dir()) {
-            Err(PypxBaseNotADir(study_data_dir))
-        } else {
-            Ok(Self { base, study_data_dir })
-        }
-    }
-
-    pub async fn get_studies(&self, study_instance_uid: Option<&str>) -> Vec<serde_json::Value> {
-        if let Some(study_instance_uid) = study_instance_uid {
-            vec![]
-        } else {
-            // OHIF doesn't care that we return everything all the time
-            vec![]
-        }
-    }
-}
-
-fn study_meta_to_dicomweb(data: &StudyDataMeta) -> Value {
+pub fn study_meta_to_dicomweb(data: &StudyDataMeta) -> Value {
     json!({
         tag2str(tags::PATIENT_ID): {
             "vr": "LO",
             "Value": [
-                &data.PatientID
+                data.PatientID
             ]
         },
         tag2str(tags::STUDY_DESCRIPTION): {
             "vr": "LO",
             "Value": [
-                &data.StudyDescription
+                data.StudyDescription
             ]
         },
         tag2str(tags::STUDY_DATE): {
             "vr": "DA",
             "Value": [
-                &data.StudyDate
+                data.StudyDate
             ]
         },
         tag2str(tags::STUDY_INSTANCE_UID): {
             "vr": "UI",
             "Value": [
-                &data.StudyInstanceUID
+                data.StudyInstanceUID
             ]
         },
         tag2str(tags::PERFORMED_STATION_AE_TITLE): {
             "vr": "AE",
             "Value": [
-                &data.PerformedStationAETitle
+                data.PerformedStationAETitle
             ]
         }
     })
