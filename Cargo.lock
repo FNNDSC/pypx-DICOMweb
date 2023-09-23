@@ -1591,6 +1591,7 @@ name = "pypx_dicomweb"
 version = "0.1.0"
 dependencies = [
  "dicom",
+ "futures",
  "poem",
  "poem-openapi",
  "pypx",
@@ -1599,6 +1600,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 

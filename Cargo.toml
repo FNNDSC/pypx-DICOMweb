@@ -16,6 +16,8 @@ tokio = { version = "1.32.0", features = ["fs", "rt-multi-thread"] }
 pypx = { path = "../pypx-rs" }
 tracing = "0.1.37"
 poem-openapi = { version = "3.0.5", features = ["swagger-ui"] }
+futures = "0.3.28"
+tokio-stream = { version = "0.1.14", features = ["fs"] }
 
 [dev-dependencies]
 rstest = "0.18.2"

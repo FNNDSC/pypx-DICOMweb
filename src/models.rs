@@ -1,30 +1,28 @@
 //! OpenAPI response model definitions for the DICOMweb API.
-use poem_openapi::{ApiResponse, Object, payload};
-use serde_json::Value;
+//!
+//!
 use crate::pypx_reader::FailedJsonRead;
+use poem_openapi::{payload, types::Any, ApiResponse};
+use serde_json::Value;
 
-/// A list of studies with some DICOM metadata.
-#[derive(Object)]
-pub struct ListOfStudies {
-    result: Vec<Value>
-}
-
-/// A response for [ListOfStudies].
+/// A response
 #[derive(ApiResponse)]
-pub enum ListStudiesResponse {
-    /// OK response
+pub enum QueryResponse {
+    /// An OK response. The body contains a JSON list of DICOM metadata.
+    /// N.B.: QIDO returns top-level JSON lists, however list is not a
+    /// valid OpenAPI type.
     #[oai(status = 200)]
-    Ok(payload::Json<ListOfStudies>),
+    Ok(payload::Json<Any<Vec<Value>>>),
     /// Internal server error
     #[oai(status = 500)]
     FailedJsonRead,
 }
 
-impl From<Result<Vec<Value>, FailedJsonRead>> for ListStudiesResponse {
+impl From<Result<Vec<Value>, FailedJsonRead>> for QueryResponse {
     fn from(value: Result<Vec<Value>, FailedJsonRead>) -> Self {
         match value {
-            Ok(v) => Self::Ok(payload::Json(ListOfStudies { result: v })),
-            Err(_e) => Self::FailedJsonRead
+            Ok(v) => Self::Ok(payload::Json(Any(v))),
+            Err(_e) => Self::FailedJsonRead,
         }
     }
 }
