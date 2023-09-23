@@ -96,9 +96,10 @@ fn tag2str(tag: dicom::core::Tag) -> String {
     format!("{:04X}{:04X}", tag.0, tag.1)
 }
 
-
 fn try_parse_int(num: &str) -> Value {
-    num.parse::<i32>().map(|n| json!(n)).unwrap_or_else(|_e| json!(num))
+    num.parse::<i32>()
+        .map(|n| json!(n))
+        .unwrap_or_else(|_e| json!(num))
 }
 
 #[cfg(test)]

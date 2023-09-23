@@ -1,3 +1,5 @@
+//! Helper functions for reading JSON files.
+
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::Path;

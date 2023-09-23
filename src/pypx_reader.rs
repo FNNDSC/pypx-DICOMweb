@@ -1,13 +1,15 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
-use crate::pypx_deserializer::{read_1member_json_file, LoadJsonFileError};
+use std::collections::HashMap;
+use crate::json_files::{read_1member_json_file, LoadJsonFileError};
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
 use futures::stream::TryStreamExt;
-use futures::{stream, StreamExt};
-use pypx::StudyDataSeriesMeta;
+use futures::{StreamExt};
+use pypx::{StudyDataMeta, StudyDataSeriesMeta};
 use serde_json::Value;
 use std::future::Future;
 use std::path::PathBuf;
+use axum::body::HttpBody;
 use tokio_stream::wrappers::ReadDirStream;
 
 #[derive(thiserror::Error, Debug)]
@@ -39,6 +41,8 @@ pub struct PypxReader {
 }
 
 impl PypxReader {
+    /// Instantiate a [PypxReader], checking to make sure the right directories exist
+    /// (`log/studyData`, `log/seriesData`).
     pub fn new(base: PathBuf) -> Result<Self, PypxBaseNotADir> {
         let log_dir = base.join("log");
         let study_data_dir = log_dir.join("studyData");
@@ -56,28 +60,27 @@ impl PypxReader {
         }
     }
 
-    /// Query for studies and study metadata, returning objects in DICOMweb format.
-    pub async fn get_studies(
-        &self,
-        study_instance_uid: Option<&str>,
-    ) -> Result<Vec<Value>, FailedJsonRead> {
-        if let Some(study_instance_uid) = study_instance_uid {
-            let file = self.study_meta_file_for(study_instance_uid);
-            match read_1member_json_file(&file).await {
-                Ok(study_data_meta) => {
-                    let data = study_meta_to_dicomweb(&study_data_meta);
-                    Ok(vec![data])
-                }
-                Err(e) => match e {
-                    LoadJsonFileError::NotFound => Ok(vec![]),
-                    _ => Err(FailedJsonRead),
-                },
-            }
+    /// Find study metadata from the pypx-organized filesystem.
+    /// Returns data in DICOMweb's response schema.
+    pub async fn query_studies(&self, query: &HashMap<String, String>) -> Result<Vec<Value>, FailedJsonRead> {
+        let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
+            flatten_notfound_error(self.get_study(study_instance_uid).await)
         } else {
-            // For now, we are not going to return anything. Just trying to get retrieve to work.
-            // For later, OHIF doesn't care that we return everything all the time
-            Ok(vec![])
-        }
+            self.ls_studies(query).await
+        }?;
+        let dicomweb_response = studies.iter().map(study_meta_to_dicomweb).collect();
+        Ok(dicomweb_response)
+    }
+
+    /// Find studies matching a given filter, returning study metadata as a DICOMweb response.
+    async fn ls_studies(&self, query: &HashMap<String, String>) -> Result<Vec<StudyDataMeta>, FailedJsonRead> {
+        todo!()
+    }
+
+    /// Get a single study and its metadata.
+    async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, LoadJsonFileError> {
+        let file = self.study_meta_file_for(study_instance_uid);
+        read_1member_json_file(&file).await
     }
 
     // Helper functions for getting information from files and directories
@@ -137,6 +140,18 @@ impl PypxReader {
     fn instances_json_dir_for(&self, series_instance_uid: &str) -> PathBuf {
         let name = format!("{series_instance_uid}-img");
         self.series_data_dir.join(name)
+    }
+}
+
+fn flatten_notfound_error<T>(result: Result<T, LoadJsonFileError>) -> Result<Vec<T>, FailedJsonRead> {
+    match result {
+        Ok(value) => Ok(vec![value]),
+        Err(error) => {
+            match error {
+                LoadJsonFileError::NotFound => Ok(vec![]),
+                _ => Err(FailedJsonRead)
+            }
+        }
     }
 }
 
