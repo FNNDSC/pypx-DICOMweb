@@ -5,6 +5,8 @@ members = [
     "pypx-DICOMweb"
 ]
 
+resolver = "2"
+
 
 # https://github.com/johnthagen/min-sized-rust
 [profile.release]

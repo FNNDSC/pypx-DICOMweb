@@ -1,17 +1,15 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
 use crate::errors::{JsonFileError, PypxBaseNotADir, ReadDirError};
-use crate::json_files::read_1member_json_file;
+use crate::json_files::{read_1member_json_file, read_json_file};
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
-use axum::body::HttpBody;
-use futures::stream::TryStreamExt;
 use futures::StreamExt;
 use pypx::{StudyDataMeta, StudyDataSeriesMeta};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::PathBuf;
 use tokio_stream::wrappers::ReadDirStream;
+use crate::constants;
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -32,7 +30,6 @@ macro_rules! select_files_by_extension {
 
 /// Reader of a pypx-organized directory of DICOM and JSON files.
 pub struct PypxReader {
-    base: PathBuf,
     study_data_dir: PathBuf,
     series_data_dir: PathBuf,
 }
@@ -45,12 +42,11 @@ impl PypxReader {
         let study_data_dir = log_dir.join("studyData");
         let series_data_dir = log_dir.join("seriesData");
 
-        let all = [&base, &study_data_dir, &series_data_dir];
+        let all = [&study_data_dir, &series_data_dir];
         if !all.iter().all(|p| p.is_dir()) {
             Err(PypxBaseNotADir(study_data_dir))
         } else {
             Ok(Self {
-                base,
                 study_data_dir,
                 series_data_dir,
             })
@@ -64,20 +60,33 @@ impl PypxReader {
         query: &HashMap<String, String>,
     ) -> Result<Vec<Value>, JsonFileError> {
         let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
-            flatten_notfound_error(self.get_study(study_instance_uid).await)
+            flatten_notfound_error(self.get_study(study_instance_uid).await)?
         } else {
             self.ls_studies(query).await
-        }?;
+        };
         let dicomweb_response = studies.iter().map(study_meta_to_dicomweb).collect();
         Ok(dicomweb_response)
     }
 
     /// Find studies matching a given filter, returning study metadata as a DICOMweb response.
-    async fn ls_studies(
-        &self,
-        query: &HashMap<String, String>,
-    ) -> Result<Vec<StudyDataMeta>, JsonFileError> {
-        todo!()
+    async fn ls_studies<'a>(&'a self, query: &'a HashMap<String, String>) -> Vec<StudyDataMeta> {
+        let path = &self.study_data_dir;
+        let read_dir = tokio::fs::read_dir(path)
+            .await
+            .map_err(|e| ReadDirError(path.to_path_buf(), e.kind()))
+            // assuming study dir exists, we checked it in Self::new()
+            .expect(&format!("{:?} is not a directory", &self.study_data_dir));
+        // TODO limit, offset
+        ReadDirStream::new(read_dir)
+            .filter_map(report_then_discard_error)
+            .map(|entry| entry.path())
+            .filter_map(select_files_by_extension!("-meta.json"))
+            .map(|path| read_json_file(path))
+            .buffer_unordered(4)
+            .filter_map(report_then_discard_error)
+            .filter_map(|study| study_matches_wrapper(study, query) )
+            .collect()
+            .await
     }
 
     /// Get a single study and its metadata.
@@ -147,6 +156,26 @@ impl PypxReader {
         let name = format!("{series_instance_uid}-img");
         self.series_data_dir.join(name)
     }
+}
+
+/// A wrapper for [study_matches] with lifetime annotations
+/// so that it may be used with [StreamExt::filter_map].
+async fn study_matches_wrapper<'a>(study: StudyDataMeta<'a>, query: &'a HashMap<String, String>) -> Option<StudyDataMeta<'a>> {
+    if study_matches(&study, query) {
+        Some(study)
+    } else {
+        None
+    }
+}
+
+/// Returns `true` if the given study matches the given query.
+fn study_matches(study: &StudyDataMeta, query: &HashMap<String, String>) -> bool {
+    if let Some(patient_id) = query.get(constants::PATIENT_ID) {
+        if patient_id != study.PatientID.as_ref() {
+            return false;
+        }
+    }
+    true
 }
 
 fn flatten_notfound_error<T>(result: Result<T, JsonFileError>) -> Result<Vec<T>, JsonFileError> {

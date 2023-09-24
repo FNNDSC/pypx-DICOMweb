@@ -1,8 +1,8 @@
 #![allow(non_snake_case)]
 
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StudyDataMeta<'a> {
