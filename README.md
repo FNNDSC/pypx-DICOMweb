@@ -1,12 +1,14 @@
-# pypx-DICOMweb
+# pypx-rs
 
-A server implementing DICOMweb for data received by [pypx-listener](https://github.com/fnndsc/pypx-listener).
+Monorepo of [pypx](https://github.com/fnndsc/pypx)-related components (re-)written in Rust.
 
-WIP
+`pypx` is a suite of Python scripts used by our lab, the
+[FNNDSC](https://fnndsc.org), for interacting with the hospital's PACS server.
+This repo, `pypx-rs`, contains:
 
-## Code Outline
+- [pypx](./pypx) (the crate): Rust type definitions for `pypx` schemas
+- [pypx-DICOMweb](./pypx-DICOMweb): a server implementing the DICOMweb API for a `pypx`-organized directory
 
-- `main.rs` is the driver which load the configuration and runs the server.
-- `router.rs` interfaces between `axum` and `pypx_reader.rs`
-- `pypx_reader.rs` provides an API for a `pypx`-organized directory of JSON and DICOM files.
-- `json_files.rs` and `translate.rs` define helper functions for `pypx_reader.rs`
+## TODO
+
+Move https://github.com/FNNDSC/pypx-listener in here
