@@ -1,8 +1,8 @@
+mod errors;
 mod json_files;
 mod pypx_reader;
 mod router;
 mod translate;
-mod errors;
 
 use crate::pypx_reader::PypxReader;
 use crate::router::get_router;

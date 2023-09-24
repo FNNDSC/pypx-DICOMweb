@@ -1,6 +1,7 @@
 //! Router definition for DICOMweb (QIDO, WADO-rs) routes.
 
-use crate::pypx_reader::{PypxReader};
+use crate::errors::{JsonFileError, ReadDirError};
+use crate::pypx_reader::PypxReader;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -8,7 +9,6 @@ use axum::{routing::get, Json, Router};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::errors::{JsonFileError, ReadDirError};
 
 pub fn get_router(pypx: PypxReader) -> Router {
     Router::new()
@@ -26,7 +26,7 @@ async fn get_studies(
 
 async fn get_series(
     State(pypx): State<Arc<PypxReader>>,
-    Path(study_instance_uid): Path<String>
+    Path(study_instance_uid): Path<String>,
 ) -> Result<Json<Vec<Value>>, ReadDirError> {
     pypx.get_series(&study_instance_uid).await.map(Json)
 }
@@ -36,7 +36,7 @@ impl IntoResponse for JsonFileError {
         let status = match &self {
             JsonFileError::NotFound(_) => StatusCode::NOT_FOUND,
             JsonFileError::Malformed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            JsonFileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR
+            JsonFileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, format!("{self:?}")).into_response()
     }
@@ -47,31 +47,3 @@ impl IntoResponse for ReadDirError {
         (StatusCode::INTERNAL_SERVER_ERROR, format!("{self:?}")).into_response()
     }
 }
-
-//
-// #[OpenApi(prefix_path = "/dicomweb")]
-// impl PypxDicomWebRouter {
-//     pub fn new(base: PathBuf) -> Result<Self, PypxBaseNotADir> {
-//         PypxReader::new(base).map(|p| Self { pypx: p })
-//     }
-//
-//     // TODO limit, offset, fuzzymatching, includefield, 00100020
-//     /// Query for studies.
-//     #[oai(path = "/studies", method = "get")]
-//     pub async fn query_studies(&self, StudyInstanceUID: Query<Option<String>>) -> QueryResponse {
-//         let study_instance_uid = StudyInstanceUID.0.as_ref().map(|s| s.as_str());
-//         let result = self.pypx.get_studies(study_instance_uid).await;
-//         QueryResponse::from(result)
-//     }
-//
-//     #[oai(path = "/studies/:StudyInstanceUID/series", method = "get")]
-//     pub async fn series(&self, StudyInstanceUID: Path<String>) -> QueryResponse {
-//         let study_instance_uid = StudyInstanceUID.0.as_str();
-//         let result = self
-//             .pypx
-//             .get_series(study_instance_uid)
-//             .await
-//             .map_err(|_e| FailedJsonRead);
-//         QueryResponse::from(result)
-//     }
-// }

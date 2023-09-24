@@ -1,5 +1,6 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
+use crate::errors::{JsonFileError, PypxBaseNotADir, ReadDirError};
 use crate::json_files::read_1member_json_file;
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
 use axum::body::HttpBody;
@@ -11,8 +12,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use tokio_stream::wrappers::ReadDirStream;
-use crate::errors::{PypxBaseNotADir, JsonFileError, ReadDirError};
-
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -90,7 +89,8 @@ impl PypxReader {
 
     pub async fn get_series(&self, study_instance_uid: &str) -> Result<Vec<Value>, ReadDirError> {
         let path = self.series_meta_dir_of(study_instance_uid);
-        let read_dir = tokio::fs::read_dir(&path).await
+        let read_dir = tokio::fs::read_dir(&path)
+            .await
             .map_err(|e| ReadDirError(path, e.kind()))?;
         let datas = ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
@@ -149,14 +149,12 @@ impl PypxReader {
     }
 }
 
-fn flatten_notfound_error<T>(
-    result: Result<T, JsonFileError>,
-) -> Result<Vec<T>, JsonFileError> {
+fn flatten_notfound_error<T>(result: Result<T, JsonFileError>) -> Result<Vec<T>, JsonFileError> {
     match result {
         Ok(value) => Ok(vec![value]),
         Err(error) => match error {
             JsonFileError::NotFound(_path) => Ok(vec![]),
-            _ => Err(error)
+            _ => Err(error),
         },
     }
 }

@@ -22,11 +22,10 @@ impl JsonFileError {
     pub(crate) fn from_io_error(path: PathBuf, error: std::io::Error) -> Self {
         match error.kind() {
             std::io::ErrorKind::NotFound => JsonFileError::NotFound(path),
-            _ => JsonFileError::IO(path, error.kind())
+            _ => JsonFileError::IO(path, error.kind()),
         }
     }
 }
-
 
 #[derive(thiserror::Error, Debug)]
 #[error("Error reading directory (1:?): {0:?}")]
