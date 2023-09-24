@@ -1,20 +1,18 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
-use std::collections::HashMap;
-use crate::json_files::{read_1member_json_file, LoadJsonFileError};
+use crate::json_files::read_1member_json_file;
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
+use axum::body::HttpBody;
 use futures::stream::TryStreamExt;
-use futures::{StreamExt};
+use futures::StreamExt;
 use pypx::{StudyDataMeta, StudyDataSeriesMeta};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
-use axum::body::HttpBody;
 use tokio_stream::wrappers::ReadDirStream;
+use crate::errors::{PypxBaseNotADir, JsonFileError};
 
-#[derive(thiserror::Error, Debug)]
-#[error("Not a directory: {0:?}")]
-pub struct PypxBaseNotADir(pub PathBuf);
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -62,7 +60,10 @@ impl PypxReader {
 
     /// Find study metadata from the pypx-organized filesystem.
     /// Returns data in DICOMweb's response schema.
-    pub async fn query_studies(&self, query: &HashMap<String, String>) -> Result<Vec<Value>, FailedJsonRead> {
+    pub async fn query_studies(
+        &self,
+        query: &HashMap<String, String>,
+    ) -> Result<Vec<Value>, JsonFileError> {
         let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
             flatten_notfound_error(self.get_study(study_instance_uid).await)
         } else {
@@ -73,14 +74,18 @@ impl PypxReader {
     }
 
     /// Find studies matching a given filter, returning study metadata as a DICOMweb response.
-    async fn ls_studies(&self, query: &HashMap<String, String>) -> Result<Vec<StudyDataMeta>, FailedJsonRead> {
+    async fn ls_studies(
+        &self,
+        query: &HashMap<String, String>,
+    ) -> Result<Vec<StudyDataMeta>, JsonFileError> {
         todo!()
     }
 
     /// Get a single study and its metadata.
-    async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, LoadJsonFileError> {
+    async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, JsonFileError> {
         let file = self.study_meta_file_for(study_instance_uid);
-        read_1member_json_file(&file).await
+        let result: Result<StudyDataMeta, _> = read_1member_json_file(file).await;
+        result
     }
 
     // Helper functions for getting information from files and directories
@@ -103,12 +108,12 @@ impl PypxReader {
 
     /// Given a path `log/studyData/XXX-series/X-meta.json`, produce the metadata of the
     /// corresponding series including `NumberOfSeriesRelatedInstances`.
-    async fn get_series_data(&self, path: PathBuf) -> Result<Value, LoadJsonFileError> {
+    async fn get_series_data(&self, path: PathBuf) -> Result<Value, JsonFileError> {
         let data: StudyDataSeriesMeta = read_1member_json_file(&path).await?;
         let series_instance_uid = data.SeriesInstanceUID.as_ref();
         let num_instances = self.count_instances(series_instance_uid).await.unwrap_or(0);
         let value = series_meta_to_dicomweb(&data, num_instances);
-        Ok(value)
+        Ok::<Value, JsonFileError>(value)
     }
 
     /// Count the number of DICOM instances in the specified series.
@@ -143,15 +148,15 @@ impl PypxReader {
     }
 }
 
-fn flatten_notfound_error<T>(result: Result<T, LoadJsonFileError>) -> Result<Vec<T>, FailedJsonRead> {
+fn flatten_notfound_error<T>(
+    result: Result<T, JsonFileError>,
+) -> Result<Vec<T>, JsonFileError> {
     match result {
         Ok(value) => Ok(vec![value]),
-        Err(error) => {
-            match error {
-                LoadJsonFileError::NotFound => Ok(vec![]),
-                _ => Err(FailedJsonRead)
-            }
-        }
+        Err(error) => match error {
+            JsonFileError::NotFound(_path) => Ok(vec![]),
+            _ => Err(error)
+        },
     }
 }
 
@@ -164,10 +169,6 @@ async fn report_then_discard_error<T, E: std::error::Error>(result: Result<T, E>
         }
     }
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("Failed to read JSON file.")]
-pub struct FailedJsonRead;
 
 #[cfg(test)]
 mod test {
