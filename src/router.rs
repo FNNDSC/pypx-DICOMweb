@@ -8,7 +8,7 @@ use axum::{routing::get, Json, Router};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::errors::JsonFileError;
+use crate::errors::{JsonFileError, ReadDirError};
 
 pub fn get_router(pypx: PypxReader) -> Router {
     Router::new()
@@ -27,9 +27,8 @@ async fn get_studies(
 async fn get_series(
     State(pypx): State<Arc<PypxReader>>,
     Path(study_instance_uid): Path<String>
-) -> Result<Json<Vec<Value>>, JsonFileError> {
-    // pypx.get_series(&study_instance_uid).await.map(Json)
-    todo!()
+) -> Result<Json<Vec<Value>>, ReadDirError> {
+    pypx.get_series(&study_instance_uid).await.map(Json)
 }
 
 impl IntoResponse for JsonFileError {
@@ -40,6 +39,12 @@ impl IntoResponse for JsonFileError {
             JsonFileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR
         };
         (status, format!("{self:?}")).into_response()
+    }
+}
+
+impl IntoResponse for ReadDirError {
+    fn into_response(self) -> Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{self:?}")).into_response()
     }
 }
 

@@ -14,7 +14,7 @@ pub enum JsonFileError {
     NotFound(PathBuf),
     #[error("File content is malformed: {0:?}")]
     Malformed(PathBuf),
-    #[error("Error reading file: {0:?} ({1:?})")]
+    #[error("Error reading file ({1:?}): {0:?}")]
     IO(PathBuf, std::io::ErrorKind),
 }
 
@@ -26,3 +26,8 @@ impl JsonFileError {
         }
     }
 }
+
+
+#[derive(thiserror::Error, Debug)]
+#[error("Error reading directory (1:?): {0:?}")]
+pub struct ReadDirError(pub(crate) PathBuf, pub(crate) std::io::ErrorKind);

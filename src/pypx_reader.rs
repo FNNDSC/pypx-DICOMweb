@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use tokio_stream::wrappers::ReadDirStream;
-use crate::errors::{PypxBaseNotADir, JsonFileError};
+use crate::errors::{PypxBaseNotADir, JsonFileError, ReadDirError};
 
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
@@ -88,12 +88,10 @@ impl PypxReader {
         result
     }
 
-    // Helper functions for getting information from files and directories
-    // --------------------------------------------------------------------------------
-
-    pub async fn get_series(&self, study_instance_uid: &str) -> Result<Vec<Value>, std::io::Error> {
+    pub async fn get_series(&self, study_instance_uid: &str) -> Result<Vec<Value>, ReadDirError> {
         let path = self.series_meta_dir_of(study_instance_uid);
-        let read_dir = tokio::fs::read_dir(path).await?;
+        let read_dir = tokio::fs::read_dir(&path).await
+            .map_err(|e| ReadDirError(path, e.kind()))?;
         let datas = ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
@@ -105,6 +103,9 @@ impl PypxReader {
             .await;
         Ok(datas)
     }
+
+    // Helper functions for getting information from files and directories
+    // --------------------------------------------------------------------------------
 
     /// Given a path `log/studyData/XXX-series/X-meta.json`, produce the metadata of the
     /// corresponding series including `NumberOfSeriesRelatedInstances`.
