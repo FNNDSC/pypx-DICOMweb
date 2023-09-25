@@ -72,7 +72,8 @@ async fn get_frame(
     // https://github.com/RadicalImaging/Static-DICOMWeb/blob/fb045851476facb24143eea7f97b763438059360/packages/static-wado-creator/lib/writer/ImageFrameWriter.js#L27
     // Content-Type deliminiter is "\r\n\r\n":
     // https://github.com/cornerstonejs/cornerstone3D/blob/d0d2fac80581648681521e4ddb6a6d9aad2087f9/packages/dicomImageLoader/src/imageLoader/wadors/getPixelData.ts#L64
-    let content_type = format!("Content-Type: application/octet-stream;transfer-syntax={uid}\r\n\r\n");
+    let content_type =
+        format!("Content-Type: application/octet-stream;transfer-syntax={uid}\r\n\r\n");
 
     let headers = [
         (header::ETAG, format!("\"{}/{}\"", sop_instance_uid, frame)),

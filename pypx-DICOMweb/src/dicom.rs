@@ -55,10 +55,19 @@ fn encode_frame_sync(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileError> {
     // Previously in commit 4a2646f0260bc72530abb3f163c112cb7e51481b
     // I was encoding the data as JPEG, which would cause glitches in OHIF.
     // OHIF seems to have the best support for image/jls and raw DICOM pixel data.
-    pixel_data.frame_data(frame).map(|data| data.to_vec()).map_err(|error| {
-        event!(Level::ERROR, "Failed to get data from {:?} at frame={}: {:?}", &path, frame, error);
-        FileError::Malformed(path)
-    })
+    pixel_data
+        .frame_data(frame)
+        .map(|data| data.to_vec())
+        .map_err(|error| {
+            event!(
+                Level::ERROR,
+                "Failed to get data from {:?} at frame={}: {:?}",
+                &path,
+                frame,
+                error
+            );
+            FileError::Malformed(path)
+        })
 }
 
 fn convert_error(path: &Path, error: ReadError) -> FileError {
