@@ -57,12 +57,12 @@ window.config = {
         staticWado: false,
         singlepart: 'bulkdata,video',
         bulkDataURI: {
-            enabled: true,
-            relativeResolution: 'studies',
+          enabled: true,
+          relativeResolution: 'studies',
         },
         omitQuotationForMultipartRequest: true
       },
-    },  
+    },
   ]
 }
 ```
