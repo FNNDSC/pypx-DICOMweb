@@ -67,6 +67,12 @@ window.config = {
 }
 ```
 
+## Performance Considerations
+
+`pypx` itself is filesystem-based, hence queries (for studies and series) involve directory traversal.
+Moreover, it is necessary to read and parse JSON files to extract information.
+These operations are considered slow and can benefit from a caching proxy server (TBA).
+
 ## TODO
 
 - etag
