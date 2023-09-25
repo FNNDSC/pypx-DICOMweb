@@ -249,14 +249,18 @@ impl PypxReader {
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
             .filter_map(select_files_by_extension!(".dcm.json"))
-            .filter_map(|path: PathBuf| async move {
-                path.file_name()
+            .filter_map(|path| async move {
+                let file_sop_instance_uid = path
+                    .file_name()
                     .and_then(|file_name| file_name.to_str())
                     .map(|file_name| {
                         &file_name[("0000-".len())..(file_name.len() - ".dcm.json".len())]
-                    })
-                    .map(|middle_part| middle_part == sop_instance_uid)
-                    .map(|_b| path)
+                    });
+                if Some(sop_instance_uid) == file_sop_instance_uid {
+                    Some(path)
+                } else {
+                    None
+                }
             });
         pin_mut!(filter);
         let first = filter.next().await;
