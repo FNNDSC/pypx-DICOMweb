@@ -21,6 +21,7 @@ axum = "0.6.20"
 
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["json", "env-filter"] }
+tower-http = { version = "0.4.4", features = ["cors"] }
 
 [dev-dependencies]
 rstest = "0.18.2"

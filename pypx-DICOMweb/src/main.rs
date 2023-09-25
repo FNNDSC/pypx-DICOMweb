@@ -8,8 +8,9 @@ mod translate;
 
 use crate::pypx_reader::PypxReader;
 use crate::router::get_router;
-use axum::{routing::get, Router};
+use axum::{routing::get, Router, http::Method};
 use std::path::PathBuf;
+use tower_http::cors::{CorsLayer, Any};
 
 #[tokio::main]
 async fn main() {
@@ -23,11 +24,16 @@ async fn main() {
     )
     .unwrap();
 
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET])
+        .allow_origin(Any);
+
     let pypx_dicomweb_router = get_router(pypx);
 
     let app = Router::new()
         .route("/readyz", get(|| async { "OK" }))
-        .nest("/dicomweb", pypx_dicomweb_router);
+        .nest("/dicomweb", pypx_dicomweb_router)
+        .layer(cors);
 
     let socket = format!("0.0.0.0:{port}").parse().unwrap();
 
