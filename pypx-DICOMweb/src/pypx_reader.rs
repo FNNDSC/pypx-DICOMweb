@@ -182,10 +182,23 @@ impl PypxReader {
                 .imageObj
                 .into_values()
                 .next()
-                .ok_or_else(|| FileError::Malformed(path.to_path_buf()))
+                .ok_or_else(|| {
+                    FileError::Malformed(
+                        path.to_path_buf(),
+                        "Value for JSON key `imageObj` is an empty object".to_string(),
+                        None,
+                    )
+                })
                 .and_then(|o| {
                     self.change_data_mount_path(o.FSlocation.as_ref())
-                        .ok_or(FileError::Malformed(path))
+                        .ok_or(FileError::Malformed(
+                            path,
+                            format!(
+                                "FSlocation={} is not relative to PYPX_REPACK_DATA_MOUNTPOINT={:?}",
+                                o.FSlocation, self.repack_data_dir_mountpath
+                            ),
+                            None,
+                        ))
                 })
         } else {
             Err(FileError::NotFound(
@@ -231,10 +244,28 @@ impl PypxReader {
         let series_meta: StudyDataSeriesMeta = read_1member_json_file(&series_meta_file).await?;
         let series_data_dir = self
             .change_data_mount_path(series_meta.SeriesBaseDir.as_ref())
-            .ok_or_else(|| FileError::Malformed(series_meta_file.to_path_buf()))?;
+            .ok_or_else(|| {
+                FileError::Malformed(
+                    series_meta_file.to_path_buf(),
+                    format!(
+                        "SeriesBaseDir={} is not relative to PYPX_REPACK_DATA_MOUNTPOINT={:?}",
+                        series_meta.SeriesBaseDir, self.repack_data_dir_mountpath
+                    ),
+                    None,
+                )
+            })?;
         let read_dir = tokio::fs::read_dir(&series_data_dir)
             .await
-            .map_err(|_e| FileError::Malformed(series_meta_file))?;
+            .map_err(|error| {
+                FileError::Malformed(
+                    series_meta_file,
+                    format!(
+                        "Cannot read SeriesBaseDir directory: {:?}",
+                        &series_data_dir
+                    ),
+                    Some(error.into()),
+                )
+            })?;
         let stream = ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
@@ -323,7 +354,7 @@ async fn read_study_meta_json(path: PathBuf) -> Result<StudyDataMeta<'static>, F
     match read_1member_json_file(&path).await {
         Ok(study) => Ok(study),
         Err(error) => {
-            if matches!(error, FileError::Malformed(_)) {
+            if matches!(error, FileError::Malformed(..)) {
                 read_json_file(&path).await.map(|study| {
                     event!(
                         Level::WARN,
@@ -379,127 +410,6 @@ async fn report_then_discard_error<T, E: std::error::Error>(result: Result<T, E>
         Err(error) => {
             event!(Level::ERROR, "{:?}", error);
             None
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use dicom::core::DataDictionary;
-    use dicom::object::StandardDataDictionary;
-
-    use serde_json::json;
-
-    #[test]
-    fn just_print_out_what_i_need_for_each_series() {
-        let data: Value = json!({
-            "0020000D": {
-                "vr": "UI",
-                "Value": [
-                    "1.3.6.1.4.1.14519.5.2.1.3023.4024.215308722288168917637555384485"
-                ]
-            },
-            "0008103E": {
-                "vr": "LO",
-                "Value": [
-                    "SAG T1 T-SPINE"
-                ]
-            },
-            "00200011": {
-                "vr": "IS",
-                "Value": [
-                    7
-                ]
-            },
-            "0020000E": {
-                "Value": [
-                    "1.3.6.1.4.1.14519.5.2.1.3023.4024.332634904672834192826308613876"
-                ]
-            },
-            "00080060": {
-                "vr": "CS",
-                "Value": [
-                    "MR"
-                ]
-            },
-            "00080021": {
-                "vr": "DA",
-                "Value": [
-                    "20020315"
-                ]
-            },
-            "00080031": {
-                "vr": "TM",
-                "Value": [
-                    "170746"
-                ]
-            },
-            "00080005": {
-                "vr": "CS",
-                "Value": [
-                    "ISO_IR 100"
-                ]
-            },
-            "00080070": {
-                "vr": "LO",
-                "Value": [
-                    "GE MEDICAL SYSTEMS"
-                ]
-            },
-            "00080090": {
-                "vr": "PN"
-            },
-            "00081090": {
-                "vr": "LO",
-                "Value": [
-                    "SIGNA EXCITE"
-                ]
-            },
-            "00180015": {
-                "vr": "CS",
-                "Value": [
-                    "TSPINE"
-                ]
-            },
-            "00181030": {
-                "vr": "LO",
-                "Value": [
-                    "8CH- THORACIC SPINE/7"
-                ]
-            },
-            "00090010": {
-                "Value": [
-                    "dedupped"
-                ],
-                "vr": "CS"
-            },
-            "00091011": {
-                "Value": [
-                    "d27a7b6a5d0f63bf519c38640894b57a0febb2886ed1ed20b0b5caf9c8c77dd6"
-                ]
-            },
-            "00091012": {
-                "Value": [
-                    "series"
-                ]
-            },
-            "00201209": {
-                "vr": "IS",
-                "Value": [
-                    24
-                ]
-            }
-        });
-
-        if let Value::Object(m) = data {
-            for (k, v) in m {
-                let tag: dicom::core::Tag = k.clone().parse().unwrap();
-                let tag_name = StandardDataDictionary.by_tag(tag).map(|e| e.alias);
-                println!("{}, {:?}, {}", tag, tag_name, v)
-            }
-        } else {
-            panic!("not a map")
         }
     }
 }

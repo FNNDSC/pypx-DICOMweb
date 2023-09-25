@@ -11,6 +11,7 @@ use axum::{routing::get, Json, Router};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{event, Level};
 
 pub fn get_router(pypx: PypxReader) -> Router {
     Router::new()
@@ -132,9 +133,10 @@ impl IntoResponse for FileError {
     fn into_response(self) -> Response {
         let status = match &self {
             FileError::NotFound(_) => StatusCode::NOT_FOUND,
-            FileError::Malformed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            FileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
-            FileError::ParentDirNotReadable(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
+            _ => {
+                event!(Level::ERROR, "{:?}", self);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         };
         (status, format!("{self:?}")).into_response()
     }

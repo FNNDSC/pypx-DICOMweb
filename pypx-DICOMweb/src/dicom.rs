@@ -5,27 +5,21 @@ use dicom::object::ReadError;
 use dicom::pixeldata::PixelDecoder;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use tracing::{event, Level};
 
 /// Serialize DICOM file as JSON.
 pub(crate) async fn dicomfile2json(path: PathBuf) -> Result<Value, FileError> {
     let p = path.to_path_buf();
     tokio::task::spawn_blocking(move || dicom::object::open_file(p))
         .await
-        .map_err(|error| {
-            event!(Level::ERROR, "Don't know what just happened! {:?}", error);
-            FileError::Malformed(path.to_path_buf())
-        })?
+        .map_err(|error| FileError::Runtime(path.to_path_buf(), error.into()))?
         .map_err(|error| convert_error(&path, error))
         .and_then(|dcm| {
             dicom_json::to_value(dcm).map_err(|error| {
-                event!(
-                    Level::ERROR,
-                    "Failed to serialize DICOM file {:?} as JSON: {:?}",
-                    &path,
-                    error
-                );
-                FileError::Malformed(path)
+                FileError::Malformed(
+                    path,
+                    "Could not parse as JSON".to_string(),
+                    Some(error.into()),
+                )
             })
         })
 }
@@ -35,22 +29,17 @@ pub async fn encode_frame(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileErro
     let p = path.to_path_buf();
     tokio::task::spawn_blocking(move || encode_frame_sync(p, frame))
         .await
-        .map_err(|error| {
-            event!(Level::ERROR, "Don't know what just happened! {:?}", error);
-            FileError::Malformed(path.to_path_buf())
-        })?
+        .map_err(|error| FileError::Runtime(path.to_path_buf(), error.into()))?
 }
 
 fn encode_frame_sync(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileError> {
     let dcm = dicom::object::open_file(&path).map_err(|error| convert_error(&path, error))?;
     let pixel_data = dcm.decode_pixel_data().map_err(|error| {
-        event!(
-            Level::ERROR,
-            "Could not read pixel data of {:?}: {:?}",
-            &path,
-            error
-        );
-        FileError::Malformed(path.to_path_buf())
+        FileError::Malformed(
+            path.to_path_buf(),
+            "Could not decode pixel data".to_string(),
+            Some(error.into()),
+        )
     })?;
     // Previously in commit 4a2646f0260bc72530abb3f163c112cb7e51481b
     // I was encoding the data as JPEG, which would cause glitches in OHIF.
@@ -59,14 +48,11 @@ fn encode_frame_sync(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileError> {
         .frame_data(frame)
         .map(|data| data.to_vec())
         .map_err(|error| {
-            event!(
-                Level::ERROR,
-                "Failed to get data from {:?} at frame={}: {:?}",
-                &path,
-                frame,
-                error
-            );
-            FileError::Malformed(path)
+            FileError::Malformed(
+                path,
+                format!("Failed to get pixel data at frame={frame}"),
+                Some(error.into()),
+            )
         })
 }
 
@@ -78,13 +64,13 @@ fn convert_error(path: &Path, error: ReadError) -> FileError {
             if matches!(source.kind(), std::io::ErrorKind::NotFound) {
                 FileError::NotFound(filename)
             } else {
-                event!(Level::ERROR, "Unable to open DICOM file: {:?}", path);
                 FileError::IO(filename, source.kind())
             }
         }
-        _ => {
-            event!(Level::ERROR, "Unable to read DICOM file: {:?}", path);
-            FileError::Malformed(path.to_path_buf())
-        }
+        _ => FileError::Malformed(
+            path.to_path_buf(),
+            "Unable to read DICOM file".to_string(),
+            None,
+        ),
     }
 }

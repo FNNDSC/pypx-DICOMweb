@@ -18,9 +18,9 @@ pub async fn read_1member_json_file<P: AsRef<Path>, T: DeserializeOwned>(
     p: P,
 ) -> Result<T, FileError> {
     let data: HashMap<String, T> = read_json_file(p.as_ref()).await?;
-    data.into_values()
-        .next()
-        .ok_or_else(|| FileError::Malformed(p.as_ref().to_path_buf()))
+    data.into_values().next().ok_or_else(|| {
+        FileError::Malformed(p.as_ref().to_path_buf(), "Empty object".to_string(), None)
+    })
 }
 
 /// Read and deserialize a (small) JSON file.
@@ -28,7 +28,12 @@ pub async fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(p: P) -> Result
     let data = tokio::fs::read(p.as_ref())
         .await
         .map_err(|e| FileError::from_io_error(p.as_ref().to_path_buf(), e))?;
-    let parsed = serde_json::from_slice(&data)
-        .map_err(|_e| FileError::Malformed(p.as_ref().to_path_buf()))?;
+    let parsed = serde_json::from_slice(&data).map_err(|error| {
+        FileError::Malformed(
+            p.as_ref().to_path_buf(),
+            "Could not deserialize".to_string(),
+            Some(error.into()),
+        )
+    })?;
     Ok(parsed)
 }

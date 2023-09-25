@@ -14,10 +14,18 @@ pub enum FileError {
     ParentDirNotReadable(PathBuf, std::io::ErrorKind),
     #[error("File not found: {0:?}")]
     NotFound(PathBuf),
-    #[error("File content is malformed: {0:?}")]
-    Malformed(PathBuf),
+    #[error("File content is malformed: {0:?} -- Reason: {1}")]
+    Malformed(
+        PathBuf,
+        String,
+        Option<Box<dyn std::error::Error + Send + Sync>>,
+    ),
     #[error("Error reading file ({1:?}): {0:?}")]
     IO(PathBuf, std::io::ErrorKind),
+
+    /// Most [FileError::Runtime] errors happen with plumbing that I don't fully understand.
+    #[error("Runtime error while processing {0:?} -- {1:?}")]
+    Runtime(PathBuf, Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl FileError {
