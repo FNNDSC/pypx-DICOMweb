@@ -81,10 +81,7 @@ impl PypxReader {
         } else {
             self.ls_studies(query, limit).await
         };
-        let dicomweb_response = studies[0..limit]
-            .iter()
-            .map(study_meta_to_dicomweb)
-            .collect();
+        let dicomweb_response = studies.iter().map(study_meta_to_dicomweb).collect();
         Ok(dicomweb_response)
     }
 
@@ -100,16 +97,31 @@ impl PypxReader {
             .map_err(|e| ReadDirError(path.to_path_buf(), e.kind()))
             // assuming study dir exists, we checked it in Self::new()
             .unwrap_or_else(|_| panic!("{:?} is not a directory", &self.study_data_dir));
-        ReadDirStream::new(read_dir)
+        let stream = ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
             .filter_map(select_files_by_extension!("-meta.json"))
             .map(read_json_file)
             .buffer_unordered(4)
             .filter_map(report_then_discard_error)
-            .filter_map(|study| study_matches_wrapper(study, query))
-            .collect()
-            .await
+            .filter_map(|study| study_matches_wrapper(study, query));
+
+        // causes "error: higher-ranked lifetime error"
+        // stream
+        //     .zip(futures::stream::iter(0..limit))
+        //     .filter_map(|(x, _)| async move { Some(x) })
+        //     .collect()
+        //     .await
+
+        pin_mut!(stream);
+        let mut data = Vec::with_capacity(limit.min(200));
+        while let Some(next) = stream.next().await {
+            data.push(next);
+            if data.len() >= limit {
+                return data;
+            }
+        }
+        data
     }
 
     /// Get a single study and its metadata.
