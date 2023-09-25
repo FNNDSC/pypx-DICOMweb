@@ -14,6 +14,10 @@ pub fn get_router(pypx: PypxReader) -> Router {
     Router::new()
         .route("/studies", get(get_studies))
         .route("/studies/:study_instance_uid/series", get(get_series))
+        .route(
+            "/studies/:study_instance_uid/series/:series_instance_uid/metadata",
+            get(get_series_metadata),
+        )
         .with_state(Arc::new(pypx))
 }
 
@@ -29,6 +33,15 @@ async fn get_series(
     Path(study_instance_uid): Path<String>,
 ) -> Result<Json<Vec<Value>>, ReadDirError> {
     pypx.get_series(&study_instance_uid).await.map(Json)
+}
+
+async fn get_series_metadata(
+    State(pypx): State<Arc<PypxReader>>,
+    Path((study_instance_uid, series_instance_uid)): Path<(String, String)>,
+) -> Result<Json<Vec<Value>>, JsonFileError> {
+    pypx.get_series_dicomweb_metadata(&study_instance_uid, &series_instance_uid)
+        .await
+        .map(Json)
 }
 
 impl IntoResponse for JsonFileError {

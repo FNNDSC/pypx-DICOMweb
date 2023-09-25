@@ -8,8 +8,9 @@ use futures::StreamExt;
 use pypx::{StudyDataMeta, StudyDataSeriesMeta};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio_stream::wrappers::ReadDirStream;
+use tracing::{event, Level};
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -32,13 +33,21 @@ macro_rules! select_files_by_extension {
 pub struct PypxReader {
     study_data_dir: PathBuf,
     series_data_dir: PathBuf,
+    data_dir: PathBuf,
+
+    /// Path where the data directory is mounted for the repacker
+    /// (`rx-repack`, which is called by `storescp`)
+    repack_data_dir_mountpath: PathBuf,
 }
 
 impl PypxReader {
     /// Instantiate a [PypxReader], checking to make sure the right directories exist
     /// (`log/studyData`, `log/seriesData`).
-    pub fn new(base: PathBuf) -> Result<Self, PypxBaseNotADir> {
-        let log_dir = base.join("log");
+    pub fn new(
+        log_dir: &Path,
+        data_dir: PathBuf,
+        repack_data_dir_mountpath: PathBuf,
+    ) -> Result<Self, PypxBaseNotADir> {
         let study_data_dir = log_dir.join("studyData");
         let series_data_dir = log_dir.join("seriesData");
 
@@ -49,6 +58,8 @@ impl PypxReader {
             Ok(Self {
                 study_data_dir,
                 series_data_dir,
+                data_dir,
+                repack_data_dir_mountpath,
             })
         }
     }
@@ -96,6 +107,7 @@ impl PypxReader {
         result
     }
 
+    /// List the series of a study.
     pub async fn get_series(&self, study_instance_uid: &str) -> Result<Vec<Value>, ReadDirError> {
         let path = self.series_meta_dir_of(study_instance_uid);
         let read_dir = tokio::fs::read_dir(&path)
@@ -111,6 +123,19 @@ impl PypxReader {
             .collect()
             .await;
         Ok(datas)
+    }
+
+    pub async fn get_series_dicomweb_metadata(
+        &self,
+        study_instance_uid: &str,
+        series_instance_uid: &str,
+    ) -> Result<Vec<Value>, JsonFileError> {
+        let dcms: Vec<PathBuf> = self
+            .ls_dcm(study_instance_uid, series_instance_uid)
+            .await?
+            .collect().await;
+        dbg!(dcms);
+        Ok(vec![])
     }
 
     // Helper functions for getting information from files and directories
@@ -139,6 +164,39 @@ impl PypxReader {
         Ok(count)
     }
 
+    /// Iterate over the DICOM files of a series.
+    async fn ls_dcm(
+        &self,
+        study_instance_uid: &str,
+        series_instance_uid: &str,
+    ) -> Result<impl futures::Stream<Item = PathBuf>, JsonFileError>
+    {
+        let series_meta_file =
+            self.studydata_series_meta_file_for(study_instance_uid, series_instance_uid);
+        let series_meta: StudyDataSeriesMeta = read_1member_json_file(&series_meta_file).await?;
+        let series_data_dir = self.change_data_mount_path(series_meta.SeriesBaseDir.as_ref())
+            .ok_or_else(|| JsonFileError::Malformed(series_meta_file.to_path_buf()))?;
+        let read_dir = tokio::fs::read_dir(&series_data_dir)
+            .await
+            .map_err(|_e| JsonFileError::Malformed(series_meta_file))?;
+        let stream = ReadDirStream::new(read_dir)
+            .filter_map(report_then_discard_error)
+            .map(|entry| entry.path())
+            .filter_map(select_files_by_extension!(".dcm"));
+        Ok(stream)
+    }
+
+    /// Change a path from the repacker's filesystem to the filesystem that is visible
+    /// to this program.
+    fn change_data_mount_path<P: AsRef<Path>>(&self, path: P) -> Option<PathBuf> {
+        pathdiff::diff_paths(path.as_ref(), &self.repack_data_dir_mountpath)
+            .map(|p| self.data_dir.join(p))
+            .or_else(|| {
+                event!(Level::ERROR, "{:?} is not relative to PYPX_DATA_DIR={:?}", path.as_ref(), self.repack_data_dir_mountpath);
+                None
+            })
+    }
+
     // Helper functions related to the pypx organization of files
     // --------------------------------------------------------------------------------
 
@@ -155,6 +213,15 @@ impl PypxReader {
     fn instances_json_dir_for(&self, series_instance_uid: &str) -> PathBuf {
         let name = format!("{series_instance_uid}-img");
         self.series_data_dir.join(name)
+    }
+
+    fn studydata_series_meta_file_for(
+        &self,
+        study_instance_uid: &str,
+        series_instance_uid: &str,
+    ) -> PathBuf {
+        let name = format!("{series_instance_uid}-meta.json");
+        self.series_meta_dir_of(study_instance_uid).join(name)
     }
 }
 
@@ -195,7 +262,7 @@ async fn report_then_discard_error<T, E: std::error::Error>(result: Result<T, E>
     match result {
         Ok(value) => Some(value),
         Err(error) => {
-            eprintln!("Error: {error:?}"); // TODO use actual logging
+            event!(Level::ERROR, "{:?}", error);
             None
         }
     }

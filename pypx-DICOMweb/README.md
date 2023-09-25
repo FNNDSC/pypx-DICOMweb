@@ -14,7 +14,11 @@ First, download some example data:
 Then run the server:
 
 ```shell
-env PYPX_BASE_PATH=../example_data/samples/pypx PORT=4006 cargo run
+export PYPX_LOG_DIR=../example_data/samples/pypx/log
+export PYPX_DATA_DIR=../example_data/samples/pypx/data
+export PYPX_REPACK_DATA_MOUNTPOINT=/tmp/dicom/data
+export RUST_LOG=pypx_dicomweb=DEBUG
+env PORT=4006 cargo run
 ```
 
 ## Code Outline

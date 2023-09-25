@@ -12,8 +12,15 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
+    init_logging();
+
     let port = get_port();
-    let pypx = PypxReader::new(get_base()).unwrap();
+    let pypx = PypxReader::new(
+        &get_path_env("PYPX_LOG_DIR"),
+        get_path_env("PYPX_DATA_DIR"),
+        get_path_env("PYPX_REPACK_DATA_MOUNTPOINT"),
+    )
+    .unwrap();
 
     let pypx_dicomweb_router = get_router(pypx);
 
@@ -29,14 +36,32 @@ async fn main() {
         .unwrap();
 }
 
+fn init_logging() {
+    let log_format = std::env::var("RUST_LOG_FORMAT")
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|_| "pretty".to_string());
+    if &log_format == "pretty" {
+        tracing_subscriber::fmt().pretty()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    } else if &log_format == "json" {
+        tracing_subscriber::fmt().json()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    } else if ["", "no", "none"].contains(&&**&log_format) {}
+    else {
+        panic!("Unsupported log format: {log_format}")
+    }
+}
+
 fn get_port() -> u32 {
     let s = std::env::var("PORT").unwrap_or("4006".to_string());
     s.parse()
         .unwrap_or_else(|_| panic!("Failed to parse PORT={s} as an integer"))
 }
 
-fn get_base() -> PathBuf {
-    let s =
-        std::env::var("PYPX_BASE_PATH").expect("Environment variable PYPX_BASE_PATH must be set");
+fn get_path_env(name: &str) -> PathBuf {
+    let s = std::env::var(name)
+        .unwrap_or_else(|e| format!("Cannot read environment variable {name}: {e:?}"));
     PathBuf::from(s)
 }
