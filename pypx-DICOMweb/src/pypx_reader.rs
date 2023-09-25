@@ -1,7 +1,7 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
 use crate::constants;
-use crate::errors::{JsonFileError, PypxBaseNotADir, ReadDirError};
+use crate::errors::{FileError, PypxBaseNotADir, ReadDirError};
 use crate::json_files::{read_1member_json_file, read_json_file};
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
 use futures::StreamExt;
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio_stream::wrappers::ReadDirStream;
 use tracing::{event, Level};
+use crate::dicom::dicomfile2json;
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -69,7 +70,7 @@ impl PypxReader {
     pub async fn query_studies(
         &self,
         query: &HashMap<String, String>,
-    ) -> Result<Vec<Value>, JsonFileError> {
+    ) -> Result<Vec<Value>, FileError> {
         let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
             flatten_notfound_error(self.get_study(study_instance_uid).await)?
         } else {
@@ -101,7 +102,7 @@ impl PypxReader {
     }
 
     /// Get a single study and its metadata.
-    async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, JsonFileError> {
+    async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, FileError> {
         let file = self.study_meta_file_for(study_instance_uid);
         let result: Result<StudyDataMeta, _> = read_1member_json_file(file).await;
         result
@@ -125,17 +126,21 @@ impl PypxReader {
         Ok(datas)
     }
 
+    /// Serialize all DICOMs of a series into JSON.
     pub async fn get_series_dicomweb_metadata(
         &self,
         study_instance_uid: &str,
         series_instance_uid: &str,
-    ) -> Result<Vec<Value>, JsonFileError> {
-        let dcms: Vec<PathBuf> = self
+    ) -> Result<Vec<Value>, FileError> {
+        let dcms = self
             .ls_dcm(study_instance_uid, series_instance_uid)
             .await?
-            .collect().await;
-        dbg!(dcms);
-        Ok(vec![])
+            .map(dicomfile2json)
+            .buffer_unordered(4)
+            .filter_map(report_then_discard_error)
+            .collect()
+            .await;
+        Ok(dcms)
     }
 
     // Helper functions for getting information from files and directories
@@ -143,12 +148,12 @@ impl PypxReader {
 
     /// Given a path `log/studyData/XXX-series/X-meta.json`, produce the metadata of the
     /// corresponding series including `NumberOfSeriesRelatedInstances`.
-    async fn get_series_data(&self, path: PathBuf) -> Result<Value, JsonFileError> {
+    async fn get_series_data(&self, path: PathBuf) -> Result<Value, FileError> {
         let data: StudyDataSeriesMeta = read_1member_json_file(&path).await?;
         let series_instance_uid = data.SeriesInstanceUID.as_ref();
         let num_instances = self.count_instances(series_instance_uid).await.unwrap_or(0);
         let value = series_meta_to_dicomweb(&data, num_instances);
-        Ok::<Value, JsonFileError>(value)
+        Ok::<Value, FileError>(value)
     }
 
     /// Count the number of DICOM instances in the specified series.
@@ -169,16 +174,16 @@ impl PypxReader {
         &self,
         study_instance_uid: &str,
         series_instance_uid: &str,
-    ) -> Result<impl futures::Stream<Item = PathBuf>, JsonFileError>
-    {
+    ) -> Result<impl futures::Stream<Item = PathBuf>, FileError> {
         let series_meta_file =
             self.studydata_series_meta_file_for(study_instance_uid, series_instance_uid);
         let series_meta: StudyDataSeriesMeta = read_1member_json_file(&series_meta_file).await?;
-        let series_data_dir = self.change_data_mount_path(series_meta.SeriesBaseDir.as_ref())
-            .ok_or_else(|| JsonFileError::Malformed(series_meta_file.to_path_buf()))?;
+        let series_data_dir = self
+            .change_data_mount_path(series_meta.SeriesBaseDir.as_ref())
+            .ok_or_else(|| FileError::Malformed(series_meta_file.to_path_buf()))?;
         let read_dir = tokio::fs::read_dir(&series_data_dir)
             .await
-            .map_err(|_e| JsonFileError::Malformed(series_meta_file))?;
+            .map_err(|_e| FileError::Malformed(series_meta_file))?;
         let stream = ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
@@ -192,7 +197,12 @@ impl PypxReader {
         pathdiff::diff_paths(path.as_ref(), &self.repack_data_dir_mountpath)
             .map(|p| self.data_dir.join(p))
             .or_else(|| {
-                event!(Level::ERROR, "{:?} is not relative to PYPX_DATA_DIR={:?}", path.as_ref(), self.repack_data_dir_mountpath);
+                event!(
+                    Level::ERROR,
+                    "{:?} is not relative to PYPX_DATA_DIR={:?}",
+                    path.as_ref(),
+                    self.repack_data_dir_mountpath
+                );
                 None
             })
     }
@@ -248,11 +258,11 @@ fn study_matches(study: &StudyDataMeta, query: &HashMap<String, String>) -> bool
     true
 }
 
-fn flatten_notfound_error<T>(result: Result<T, JsonFileError>) -> Result<Vec<T>, JsonFileError> {
+fn flatten_notfound_error<T>(result: Result<T, FileError>) -> Result<Vec<T>, FileError> {
     match result {
         Ok(value) => Ok(vec![value]),
         Err(error) => match error {
-            JsonFileError::NotFound(_path) => Ok(vec![]),
+            FileError::NotFound(_path) => Ok(vec![]),
             _ => Err(error),
         },
     }

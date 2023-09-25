@@ -1,6 +1,6 @@
 //! Router definition for DICOMweb (QIDO, WADO-rs) routes.
 
-use crate::errors::{JsonFileError, ReadDirError};
+use crate::errors::{FileError, ReadDirError};
 use crate::pypx_reader::PypxReader;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -24,7 +24,7 @@ pub fn get_router(pypx: PypxReader) -> Router {
 async fn get_studies(
     State(pypx): State<Arc<PypxReader>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<Vec<Value>>, JsonFileError> {
+) -> Result<Json<Vec<Value>>, FileError> {
     pypx.query_studies(&params).await.map(Json)
 }
 
@@ -38,18 +38,18 @@ async fn get_series(
 async fn get_series_metadata(
     State(pypx): State<Arc<PypxReader>>,
     Path((study_instance_uid, series_instance_uid)): Path<(String, String)>,
-) -> Result<Json<Vec<Value>>, JsonFileError> {
+) -> Result<Json<Vec<Value>>, FileError> {
     pypx.get_series_dicomweb_metadata(&study_instance_uid, &series_instance_uid)
         .await
         .map(Json)
 }
 
-impl IntoResponse for JsonFileError {
+impl IntoResponse for FileError {
     fn into_response(self) -> Response {
         let status = match &self {
-            JsonFileError::NotFound(_) => StatusCode::NOT_FOUND,
-            JsonFileError::Malformed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            JsonFileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
+            FileError::NotFound(_) => StatusCode::NOT_FOUND,
+            FileError::Malformed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            FileError::IO(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, format!("{self:?}")).into_response()
     }

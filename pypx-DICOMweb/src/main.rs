@@ -1,4 +1,5 @@
 mod constants;
+mod dicom;
 mod errors;
 mod json_files;
 mod pypx_reader;
@@ -41,15 +42,17 @@ fn init_logging() {
         .map(|s| s.to_lowercase())
         .unwrap_or_else(|_| "pretty".to_string());
     if &log_format == "pretty" {
-        tracing_subscriber::fmt().pretty()
+        tracing_subscriber::fmt()
+            .pretty()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     } else if &log_format == "json" {
-        tracing_subscriber::fmt().json()
+        tracing_subscriber::fmt()
+            .json()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
-    } else if ["", "no", "none"].contains(&&**&log_format) {}
-    else {
+    } else if ["", "no", "none"].contains(&&**&log_format) {
+    } else {
         panic!("Unsupported log format: {log_format}")
     }
 }

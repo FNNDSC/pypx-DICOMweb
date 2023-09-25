@@ -7,9 +7,9 @@ use std::path::PathBuf;
 #[error("Not a directory: {0:?}")]
 pub struct PypxBaseNotADir(pub PathBuf);
 
-/// Error reading JSON file from pypx-organized directory.
+/// Error reading file from pypx-organized directory.
 #[derive(thiserror::Error, Debug)]
-pub enum JsonFileError {
+pub enum FileError {
     #[error("File not found: {0:?}")]
     NotFound(PathBuf),
     #[error("File content is malformed: {0:?}")]
@@ -18,11 +18,11 @@ pub enum JsonFileError {
     IO(PathBuf, std::io::ErrorKind),
 }
 
-impl JsonFileError {
+impl FileError {
     pub(crate) fn from_io_error(path: PathBuf, error: std::io::Error) -> Self {
         match error.kind() {
-            std::io::ErrorKind::NotFound => JsonFileError::NotFound(path),
-            _ => JsonFileError::IO(path, error.kind()),
+            std::io::ErrorKind::NotFound => FileError::NotFound(path),
+            _ => FileError::IO(path, error.kind()),
         }
     }
 }
