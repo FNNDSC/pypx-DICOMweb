@@ -1,7 +1,10 @@
 # pypx-DICOMweb
 
-A server implementing DICOMweb for data received by [pypx-listener](https://github.com/FNNDSC/pypx-listener).
+A server implementing DICOMweb\* for query and retrieval of DICOM data
+from a directory managed by [pypx-listener](https://github.com/FNNDSC/pypx-listener).
 
+\*Specifically, this project targets the subset of DICOMweb necessary to get
+things working with [OHIF](https://github.com/OHIF/Viewers).
 
 ## Development
 
@@ -25,8 +28,44 @@ env PORT=4006 cargo run
 
 - `main.rs` is the driver which load the configuration and runs the server.
 - `router.rs` interfaces between `axum` and `pypx_reader.rs`
-- `pypx_reader.rs` provides an API for a `pypx`-organized directory of JSON and DICOM files.
+- `pypx_reader.rs` provides an API for a `pypx`-organized directory of JSON and DICOM files
 - `json_files.rs` and `translate.rs` define helper functions for `pypx_reader.rs`
+- `dicom.rs` defines helper functions for reading DICOM files
+
+## OHIF Configuration
+
+```javascript
+window.config = {
+  // -- snip --
+  dataSources: [
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'pypx',
+      configuration: {
+        friendlyName: 'Existing pypx-organized DICOM files',
+        name: 'pypx',
+        wadoUriRoot: 'http://localhost:4006/dicomweb',
+        qidoRoot: 'http://localhost:4006/dicomweb',
+        wadoRoot: 'http://localhost:4006/dicomweb',
+        qidoSupportsIncludeField: false,
+        supportsReject: false,
+        imageRendering: 'wadors',
+        thumbnailRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        supportsFuzzyMatching: false,
+        supportsWildcard: false,
+        staticWado: false,
+        singlepart: 'bulkdata,video',
+        bulkDataURI: {
+            enabled: true,
+            relativeResolution: 'studies',
+        },
+        omitQuotationForMultipartRequest: true
+      },
+    },  
+  ]
+}
+```
 
 ## TODO
 
