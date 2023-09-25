@@ -101,7 +101,7 @@ impl PypxReader {
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
             .filter_map(select_files_by_extension!("-meta.json"))
-            .map(read_json_file)
+            .map(read_study_meta_json)
             .buffer_unordered(4)
             .filter_map(report_then_discard_error)
             .filter_map(|study| study_matches_wrapper(study, query));
@@ -127,7 +127,7 @@ impl PypxReader {
     /// Get a single study and its metadata.
     async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, FileError> {
         let file = self.study_meta_file_for(study_instance_uid);
-        let result: Result<StudyDataMeta, _> = read_json_file(file).await;
+        let result: Result<StudyDataMeta, _> = read_study_meta_json(file).await;
         result
     }
 
@@ -314,6 +314,29 @@ impl PypxReader {
     ) -> PathBuf {
         let name = format!("{series_instance_uid}-meta.json");
         self.series_meta_dir_of(study_instance_uid).join(name)
+    }
+}
+
+/// A wrapper to handle a bug in `rx-repack` which was fixed in version 1.0.3
+/// https://github.com/FNNDSC/pypx-listener/commit/b453fb375f180dbad6ebd9df27966b5ff0ac484e
+async fn read_study_meta_json(path: PathBuf) -> Result<StudyDataMeta<'static>, FileError> {
+    match read_1member_json_file(&path).await {
+        Ok(study) => Ok(study),
+        Err(error) => {
+            if matches!(error, FileError::Malformed(_)) {
+                read_json_file(&path).await.map(|study| {
+                    event!(
+                        Level::WARN,
+                        "File is affected by rx-repack bug, please fix by \
+                        repacking the DICOM file using rx-repack v1.0.3 or greater. {:?}",
+                        path
+                    );
+                    study
+                })
+            } else {
+                Err(error)
+            }
+        }
     }
 }
 
