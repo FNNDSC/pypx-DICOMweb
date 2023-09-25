@@ -4,7 +4,6 @@ use crate::errors::FileError;
 use dicom::object::ReadError;
 use dicom::pixeldata::PixelDecoder;
 use serde_json::Value;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tracing::{event, Level};
 
@@ -31,7 +30,7 @@ pub(crate) async fn dicomfile2json(path: PathBuf) -> Result<Value, FileError> {
         })
 }
 
-/// Get a frame (zero-indexed) of a DICOM file as a JPG.
+/// Get a frame (zero-indexed) of a DICOM file.
 pub async fn encode_frame(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileError> {
     let p = path.to_path_buf();
     tokio::task::spawn_blocking(move || encode_frame_sync(p, frame))
@@ -53,34 +52,13 @@ fn encode_frame_sync(path: PathBuf, frame: u32) -> Result<Vec<u8>, FileError> {
         );
         FileError::Malformed(path.to_path_buf())
     })?;
-    let frame_image = pixel_data
-        .to_dynamic_image(frame)
-        // JPEG only supports 8-bit
-        // https://github.com/image-rs/image/issues/1777#issuecomment-1224014721
-        .map(|image| image.to_rgba8())
-        .map_err(|error| {
-            event!(
-                Level::ERROR,
-                "Could not convert pixel data of {:?} to dynamic image: {:?}",
-                &path,
-                error
-            );
-            FileError::Malformed(path.to_path_buf())
-        })?;
-    let mut buf = Cursor::new(Vec::with_capacity(std::mem::size_of_val(&frame_image)));
-    frame_image
-        .write_to(&mut buf, image::ImageOutputFormat::Jpeg(100))
-        .map_err(|error| {
-            event!(
-                Level::ERROR,
-                "Error while writing {:?} as encoded JPEG to buffer: {:?}",
-                &path,
-                error
-            );
-            FileError::Malformed(path.to_path_buf())
-        })?;
-    let data = buf.into_inner();
-    Ok(data)
+    // Previously in commit 4a2646f0260bc72530abb3f163c112cb7e51481b
+    // I was encoding the data as JPEG, which would cause glitches in OHIF.
+    // OHIF seems to have the best support for image/jls and raw DICOM pixel data.
+    pixel_data.frame_data(frame).map(|data| data.to_vec()).map_err(|error| {
+        event!(Level::ERROR, "Failed to get data from {:?} at frame={}: {:?}", &path, frame, error);
+        FileError::Malformed(path)
+    })
 }
 
 fn convert_error(path: &Path, error: ReadError) -> FileError {

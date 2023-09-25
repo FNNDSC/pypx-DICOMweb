@@ -66,15 +66,14 @@ async fn get_frame(
 
     // I don't know what UID to use, but here's a list of UIDs which OHIF accpets:
     // https://github.com/OHIF/Viewers/blob/10ca35d5f497021abd562d457d11818474d02868/platform/core/src/utils/generateAcceptHeader.ts#L39-L55
-    let uid = dicom::dictionary_std::uids::JPEG_LOSSLESS;
+    let uid = dicom::dictionary_std::uids::IMPLICIT_VR_LITTLE_ENDIAN;
 
     // transfer-syntax:
     // https://github.com/RadicalImaging/Static-DICOMWeb/blob/fb045851476facb24143eea7f97b763438059360/packages/static-wado-creator/lib/writer/ImageFrameWriter.js#L27
     // Content-Type deliminiter is "\r\n\r\n":
     // https://github.com/cornerstonejs/cornerstone3D/blob/d0d2fac80581648681521e4ddb6a6d9aad2087f9/packages/dicomImageLoader/src/imageLoader/wadors/getPixelData.ts#L64
-    let content_type = format!("Content-Type: image/jpeg;transfer-syntax={uid}\r\n\r\n");
+    let content_type = format!("Content-Type: application/octet-stream;transfer-syntax={uid}\r\n\r\n");
 
-    // TODO caching headers
     let headers = [
         (header::ETAG, format!("\"{}/{}\"", sop_instance_uid, frame)),
         (header::CONTENT_TYPE, "multipart/related".to_string()),
