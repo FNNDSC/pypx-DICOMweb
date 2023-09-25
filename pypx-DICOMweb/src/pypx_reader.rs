@@ -1,17 +1,17 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
 use crate::constants;
+use crate::dicom::dicomfile2json;
 use crate::errors::{FileError, PypxBaseNotADir, ReadDirError};
 use crate::json_files::{read_1member_json_file, read_json_file};
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
-use futures::StreamExt;
-use pypx::{StudyDataMeta, StudyDataSeriesMeta};
+use futures::{pin_mut, StreamExt};
+use pypx::{InstanceData, StudyDataMeta, StudyDataSeriesMeta};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio_stream::wrappers::ReadDirStream;
 use tracing::{event, Level};
-use crate::dicom::dicomfile2json;
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -144,6 +144,34 @@ impl PypxReader {
         Ok(dcms)
     }
 
+    /// Get `FSlocation` from the JSON file which describes a DICOM instance file.
+    pub async fn get_instance_fslocation(
+        &self,
+        series_instance_uid: &str,
+        sop_instance_uid: &str,
+    ) -> Result<PathBuf, FileError> {
+        let series_dir = self.instances_json_dir_for(series_instance_uid);
+        let find = self
+            .find_instance_meta_file(&series_dir, sop_instance_uid)
+            .await?;
+        if let Some(path) = find {
+            let instance_data: InstanceData = read_1member_json_file(&path).await?;
+            instance_data
+                .imageObj
+                .into_values()
+                .next()
+                .ok_or_else(|| FileError::Malformed(path.to_path_buf()))
+                .and_then(|o| {
+                    self.change_data_mount_path(o.FSlocation.as_ref())
+                        .ok_or(FileError::Malformed(path))
+                })
+        } else {
+            Err(FileError::NotFound(
+                series_dir.join(format!("????-{sop_instance_uid}.dcm.json")),
+            ))
+        }
+    }
+
     // Helper functions for getting information from files and directories
     // --------------------------------------------------------------------------------
 
@@ -206,6 +234,33 @@ impl PypxReader {
                 );
                 None
             })
+    }
+
+    /// Find a file under `series_dir` called `????-{sop_instance_uid}.dcm.json`
+    async fn find_instance_meta_file(
+        &self,
+        series_dir: &Path,
+        sop_instance_uid: &str,
+    ) -> Result<Option<PathBuf>, FileError> {
+        let read_dir = tokio::fs::read_dir(series_dir)
+            .await
+            .map_err(|e| FileError::ParentDirNotReadable(series_dir.to_path_buf(), e.kind()))?;
+        let filter = ReadDirStream::new(read_dir)
+            .filter_map(report_then_discard_error)
+            .map(|entry| entry.path())
+            .filter_map(select_files_by_extension!(".dcm.json"))
+            .filter_map(|path: PathBuf| async move {
+                path.file_name()
+                    .and_then(|file_name| file_name.to_str())
+                    .map(|file_name| {
+                        &file_name[("0000-".len())..(file_name.len() - ".dcm.json".len())]
+                    })
+                    .map(|middle_part| middle_part == sop_instance_uid)
+                    .map(|_b| path)
+            });
+        pin_mut!(filter);
+        let first = filter.next().await;
+        Ok(first)
     }
 
     // Helper functions related to the pypx organization of files

@@ -10,6 +10,8 @@ pub struct PypxBaseNotADir(pub PathBuf);
 /// Error reading file from pypx-organized directory.
 #[derive(thiserror::Error, Debug)]
 pub enum FileError {
+    #[error("Cannot read parent directory: {0:?}")]
+    ParentDirNotReadable(PathBuf, std::io::ErrorKind),
     #[error("File not found: {0:?}")]
     NotFound(PathBuf),
     #[error("File content is malformed: {0:?}")]

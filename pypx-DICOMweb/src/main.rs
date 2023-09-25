@@ -8,9 +8,9 @@ mod translate;
 
 use crate::pypx_reader::PypxReader;
 use crate::router::get_router;
-use axum::{routing::get, Router, http::Method};
+use axum::{http::Method, routing::get, Router};
 use std::path::PathBuf;
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() {
@@ -57,7 +57,7 @@ fn init_logging() {
             .json()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
-    } else if ["", "no", "none"].contains(&&**&log_format) {
+    } else if ["", "no", "none"].contains(&&*log_format) {
     } else {
         panic!("Unsupported log format: {log_format}")
     }

@@ -27,3 +27,8 @@ env PORT=4006 cargo run
 - `router.rs` interfaces between `axum` and `pypx_reader.rs`
 - `pypx_reader.rs` provides an API for a `pypx`-organized directory of JSON and DICOM files.
 - `json_files.rs` and `translate.rs` define helper functions for `pypx_reader.rs`
+
+## TODO
+
+- etag
+- add PatientName to study query results
