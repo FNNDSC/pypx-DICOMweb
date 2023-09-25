@@ -1,5 +1,6 @@
 //! Reads data from a pypx-organized directory, presenting it in "DICOMweb format."
 
+use crate::constants;
 use crate::errors::{JsonFileError, PypxBaseNotADir, ReadDirError};
 use crate::json_files::{read_1member_json_file, read_json_file};
 use crate::translate::{series_meta_to_dicomweb, study_meta_to_dicomweb};
@@ -9,7 +10,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio_stream::wrappers::ReadDirStream;
-use crate::constants;
 
 /// Creates a closure suitable for use by [StreamExt::filter_map]
 /// which filters paths by extension.
@@ -75,16 +75,16 @@ impl PypxReader {
             .await
             .map_err(|e| ReadDirError(path.to_path_buf(), e.kind()))
             // assuming study dir exists, we checked it in Self::new()
-            .expect(&format!("{:?} is not a directory", &self.study_data_dir));
+            .unwrap_or_else(|_| panic!("{:?} is not a directory", &self.study_data_dir));
         // TODO limit, offset
         ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())
             .filter_map(select_files_by_extension!("-meta.json"))
-            .map(|path| read_json_file(path))
+            .map(read_json_file)
             .buffer_unordered(4)
             .filter_map(report_then_discard_error)
-            .filter_map(|study| study_matches_wrapper(study, query) )
+            .filter_map(|study| study_matches_wrapper(study, query))
             .collect()
             .await
     }
@@ -160,7 +160,10 @@ impl PypxReader {
 
 /// A wrapper for [study_matches] with lifetime annotations
 /// so that it may be used with [StreamExt::filter_map].
-async fn study_matches_wrapper<'a>(study: StudyDataMeta<'a>, query: &'a HashMap<String, String>) -> Option<StudyDataMeta<'a>> {
+async fn study_matches_wrapper<'a>(
+    study: StudyDataMeta<'a>,
+    query: &'a HashMap<String, String>,
+) -> Option<StudyDataMeta<'a>> {
     if study_matches(&study, query) {
         Some(study)
     } else {

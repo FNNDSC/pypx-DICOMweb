@@ -18,10 +18,9 @@ pub async fn read_1member_json_file<P: AsRef<Path>, T: DeserializeOwned>(
     p: P,
 ) -> Result<T, JsonFileError> {
     let data: HashMap<String, T> = read_json_file(p.as_ref()).await?;
-    for value in data.into_values() {
-        return Ok(value);
-    }
-    Err(JsonFileError::Malformed(p.as_ref().to_path_buf()))
+    data.into_values()
+        .next()
+        .ok_or_else(|| JsonFileError::Malformed(p.as_ref().to_path_buf()))
 }
 
 /// Read and deserialize a (small) JSON file.

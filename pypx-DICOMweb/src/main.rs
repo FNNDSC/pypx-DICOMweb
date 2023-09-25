@@ -32,7 +32,7 @@ async fn main() {
 fn get_port() -> u32 {
     let s = std::env::var("PORT").unwrap_or("4006".to_string());
     s.parse()
-        .expect(&format!("Failed to parse PORT={s} as an integer"))
+        .unwrap_or_else(|_| panic!("Failed to parse PORT={s} as an integer"))
 }
 
 fn get_base() -> PathBuf {
