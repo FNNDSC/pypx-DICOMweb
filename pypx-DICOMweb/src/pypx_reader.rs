@@ -71,6 +71,7 @@ impl PypxReader {
         &self,
         query: &HashMap<String, String>,
     ) -> Result<Vec<Value>, FileError> {
+        // TODO add PatientName to the data
         let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
             flatten_notfound_error(self.get_study(study_instance_uid).await)?
         } else {
@@ -104,7 +105,7 @@ impl PypxReader {
     /// Get a single study and its metadata.
     async fn get_study(&self, study_instance_uid: &str) -> Result<StudyDataMeta, FileError> {
         let file = self.study_meta_file_for(study_instance_uid);
-        let result: Result<StudyDataMeta, _> = read_1member_json_file(file).await;
+        let result: Result<StudyDataMeta, _> = read_json_file(file).await;
         result
     }
 
