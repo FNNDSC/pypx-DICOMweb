@@ -70,26 +70,36 @@ impl PypxReader {
     pub async fn query_studies(
         &self,
         query: &HashMap<String, String>,
+        limit: usize,
     ) -> Result<Vec<Value>, FileError> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
         // TODO add PatientName to the data
         let studies = if let Some(study_instance_uid) = query.get("StudyInstanceUID") {
             flatten_notfound_error(self.get_study(study_instance_uid).await)?
         } else {
-            self.ls_studies(query).await
+            self.ls_studies(query, limit).await
         };
-        let dicomweb_response = studies.iter().map(study_meta_to_dicomweb).collect();
+        let dicomweb_response = studies[0..limit]
+            .iter()
+            .map(study_meta_to_dicomweb)
+            .collect();
         Ok(dicomweb_response)
     }
 
     /// Find studies matching a given filter, returning study metadata as a DICOMweb response.
-    async fn ls_studies<'a>(&'a self, query: &'a HashMap<String, String>) -> Vec<StudyDataMeta> {
+    async fn ls_studies<'a>(
+        &'a self,
+        query: &'a HashMap<String, String>,
+        limit: usize,
+    ) -> Vec<StudyDataMeta> {
         let path = &self.study_data_dir;
         let read_dir = tokio::fs::read_dir(path)
             .await
             .map_err(|e| ReadDirError(path.to_path_buf(), e.kind()))
             // assuming study dir exists, we checked it in Self::new()
             .unwrap_or_else(|_| panic!("{:?} is not a directory", &self.study_data_dir));
-        // TODO limit, offset
         ReadDirStream::new(read_dir)
             .filter_map(report_then_discard_error)
             .map(|entry| entry.path())

@@ -27,8 +27,18 @@ pub fn get_router(pypx: PypxReader) -> Router {
 async fn get_studies(
     State(pypx): State<Arc<PypxReader>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<Vec<Value>>, FileError> {
-    pypx.query_studies(&params).await.map(Json)
+) -> Result<Json<Vec<Value>>, QueryError> {
+    let limit = if let Some(l) = params.get("limit") {
+        l.parse().or(Err(QueryError::BadRequest(
+            "limit must be a natural number",
+        )))?
+    } else {
+        usize::MAX
+    };
+    pypx.query_studies(&params, limit)
+        .await
+        .map(Json)
+        .map_err(|e| e.into())
 }
 
 async fn get_series(
@@ -99,6 +109,23 @@ async fn get_frame(
 
     let response = (headers, body).into_response();
     Ok(response)
+}
+
+#[derive(thiserror::Error, Debug)]
+enum QueryError {
+    #[error("{0}")]
+    BadRequest(&'static str),
+    #[error(transparent)]
+    Err(#[from] FileError),
+}
+
+impl IntoResponse for QueryError {
+    fn into_response(self) -> Response {
+        match self {
+            QueryError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
+            QueryError::Err(e) => e.into_response(),
+        }
+    }
 }
 
 impl IntoResponse for FileError {
