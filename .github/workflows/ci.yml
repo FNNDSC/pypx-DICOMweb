@@ -23,7 +23,7 @@ jobs:
         import itertools
         
         registries = ['docker.io', 'ghcr.io']
-        repos = ['${{ github.repository }}'.lower()]
+        repos = ['fnndsc/pypx-dicomweb']
         if '${{ github.ref_type }}' == 'branch':
             tags = ['latest']
         elif '${{ github.ref_type }}' == 'tag':
