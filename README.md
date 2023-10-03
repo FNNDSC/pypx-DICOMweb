@@ -1,5 +1,8 @@
 # pypx-rs
 
+[![CI](https://github.com/FNNDSC/pypx-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/FNNDSC/pypx-rs/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/github/license/fnndsc/pypx-rs)](./LICENSE)
+
 Monorepo of [pypx](https://github.com/fnndsc/pypx)-related components (re-)written in Rust.
 
 `pypx` is a suite of Python scripts used by our lab, the
