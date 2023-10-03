@@ -1,3 +1,5 @@
 *.Dockerfile
 /target
 /example_data
+/.github
+/.git
