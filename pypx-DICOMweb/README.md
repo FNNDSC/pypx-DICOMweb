@@ -24,6 +24,19 @@ export RUST_LOG=pypx_dicomweb=DEBUG
 env PORT=4006 cargo run
 ```
 
+### Using Docker or Podman
+
+```shell
+docker build -f ../pypx-DICOMweb.Dockerfile -t localhost/fnndsc/pypx-dicomweb:latest ..
+docker run --name pypx-dicomweb \
+    --rm -u "$((RANDOM+1000))" -p 4006:4006 \
+    -v "$(realpath ../example_data/samples/pypx):/data:ro" \
+    -e PYPX_LOG_DIR=/data/log -e PYPX_DATA_DIR=/data/data \
+    -e PYPX_REPACK_DATA_MOUNTPOINT=/tmp/dicom/data \
+    -e RUST_LOG=pypx_dicomweb=DEBUG \
+    localhost/fnndsc/pypx-dicomweb:latest
+```
+
 ## Code Outline
 
 - `main.rs` is the driver which load the configuration and runs the server.
