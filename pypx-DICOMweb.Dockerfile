@@ -17,5 +17,11 @@ RUN cargo build --release --locked --target x86_64-unknown-linux-musl --bin pypx
 FROM scratch
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/pypx_dicomweb /app/pypx_dicomweb
 
+LABEL org.opencontainers.image.authors="Jennings Zhang, FNNDSC <dev@babyMRI.org>" \
+    org.opencontainers.image.url="https://github.com/FNNDSC/pypx-rs/tree/master/pypx-DICOMweb" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.title="pypx-DICOMweb" \
+    org.opencontainers.image.description="DICOMweb server for pypx data"
+
 EXPOSE 4006
 CMD ["/app/pypx_dicomweb"]
