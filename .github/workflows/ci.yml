@@ -1,0 +1,69 @@
+# On push: build latest images
+
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - "v?[0-9]+.[0-9]+.[0-9]+*"
+  pull_request:
+
+jobs:
+  build-pypy-dicomweb:
+    name: Build pypx-DICOMweb
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Decide image tags
+      id: info
+      shell: python
+      run: |
+        import os
+        import itertools
+        
+        registries = ['docker.io', 'ghcr.io']
+        repos = ['${{ github.repository }}'.lower()]
+        if '${{ github.ref_type }}' == 'branch':
+            tags = ['latest']
+        elif '${{ github.ref_type }}' == 'tag':
+            tags = ['latest', '${{ github.ref_name }}']
+        else:
+            tags = []
+
+        def join_tag(t):
+            registry, repo, tag = t
+            return f'{registry}/{repo}:{tag}'
+
+        product = itertools.product(registries, repos, tags)
+        tags_csv = ','.join(map(join_tag, product))
+        push = 'true' if tags_csv else 'false'
+
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+            out.write(f'tags={tags_csv}\n')
+            out.write(f'push={push}\n')
+
+    - uses: docker/setup-buildx-action@v3
+    - name: Login to DockerHub
+      if: github.event_name == 'push' || github.event_name == 'release'
+      id: dockerhub_login
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+    - name: Login to GitHub Container Registry
+      if: github.event_name == 'push' || github.event_name == 'release'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build image
+      uses: docker/build-push-action@v5
+      id: docker_build
+      with:
+        file: ./pypx-DICOMweb.Dockerfile
+        tags: ${{ steps.info.outputs.tags }}
+        push: ${{ steps.info.outputs.push }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
