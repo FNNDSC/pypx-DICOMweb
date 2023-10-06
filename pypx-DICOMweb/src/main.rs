@@ -11,7 +11,7 @@ use crate::router::get_router;
 use axum::{http::Method, routing::get, Router};
 use std::path::PathBuf;
 use tower_http::cors::{Any, CorsLayer};
-use axum_prometheus::PrometheusMetricLayer;
+use axum_prometheus::PrometheusMetricLayerBuilder;
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +29,11 @@ async fn main() {
         .allow_methods([Method::GET])
         .allow_origin(Any);
 
-    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
+        .with_prefix("pypx_dicomweb_axum")
+        .with_ignore_pattern("/metrics")
+        .with_default_metrics()
+        .build_pair();
     let pypx_dicomweb_router = get_router(pypx)
         .layer(prometheus_layer);
 
