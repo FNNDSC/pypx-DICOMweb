@@ -1,3 +1,7 @@
+# Deprecated in favor of [oxidicom](https://github.com/FNNDSC/oxidicom/).
+
+See https://github.com/FNNDSC/oxidicom/
+
 # pypx-rs
 
 [![CI](https://github.com/FNNDSC/pypx-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/FNNDSC/pypx-rs/actions/workflows/ci.yml)
